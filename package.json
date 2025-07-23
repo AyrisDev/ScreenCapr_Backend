@@ -12,7 +12,10 @@
     "start:prod": "NODE_ENV=production node dist/app.js",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
-    "test": "echo \"Tests will be added\" && exit 0"
+    "test": "echo \"Tests will be added\" && exit 0",
+    "postinstall": "npx playwright install chromium",
+    "docker:build": "docker build -t screenly-api .",
+    "docker:run": "docker run -p 3000:3000 screenly-api"
   },
   "keywords": [
     "screenshot",
