@@ -12,7 +12,7 @@ export class TelegramBotService {
   constructor(screenshotService: ScreenshotService) {
     this.screenshotService = screenshotService;
     this.isEnabled = process.env.TELEGRAM_BOT_ENABLED === 'true';
-    
+
     if (this.isEnabled) {
       this.initializeBot();
     }
@@ -20,7 +20,7 @@ export class TelegramBotService {
 
   private initializeBot(): void {
     const token = process.env.TELEGRAM_BOT_TOKEN;
-    
+
     if (!token || token === 'your_bot_token_here') {
       console.warn('Telegram bot token not configured properly');
       this.isEnabled = false;
@@ -57,7 +57,7 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
 \`/screenshot https://google.com --full\`
 \`/screenshot https://google.com --format=jpeg --mobile\`
       `;
-      
+
       this.bot!.sendMessage(chatId, welcomeMessage, { parse_mode: 'Markdown' });
     });
 
@@ -73,6 +73,8 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
 
 *Screenshot Seçenekleri:*
 • \`--full\` - Tüm sayfa (varsayılan: viewport)
+• \`--no-lazy\` - Lazy Load kapat (Otomatik açık)
+• \`--delay=2000\` - Bekleme süresi (ms, varsayılan: 2000)
 • \`--mobile\` - Mobil görünüm (375x667)
 • \`--tablet\` - Tablet görünüm (768x1024)
 • \`--desktop\` - Masaüstü görünüm (1920x1080) [varsayılan]
@@ -80,9 +82,9 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
 • \`--format=jpeg\` - JPEG formatı
 
 *Örnek kullanım:*
-\`/screenshot https://google.com\`
-\`/screenshot https://google.com --full --mobile\`
-\`/screenshot https://google.com --format=jpeg --tablet\`
+\`/screenshot https://google.com\` (Lazy load + 2sn bekleme otomatik)
+\`/screenshot https://google.com --no-lazy\`
+\`/screenshot https://google.com --delay=5000\`
 
 *Önemli Notlar:*
 • Tüm sayfa screenshot'ları çok büyükse otomatik JPEG'e çevrilir
@@ -93,7 +95,7 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
 • Maksimum işlem süresi: 30 saniye
 • Eşzamanlı işlem limiti var
       `;
-      
+
       this.bot!.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
     });
 
@@ -109,7 +111,7 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
 
       // Parse URL and options
       const { url, options, error } = this.parseScreenshotCommand(input);
-      
+
       if (error) {
         this.bot!.sendMessage(chatId, `❌ ${error}`, { parse_mode: 'Markdown' });
         return;
@@ -129,25 +131,25 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
 
       try {
         const screenshot = await this.screenshotService.takeScreenshot(options);
-        
+
         let finalScreenshot = screenshot;
         let finalCaption = `📸 ${url}\n${optionsText}`;
-        
+
         // Process screenshot with Sharp to check dimensions and optimize
         finalScreenshot = await this.processTelegramImage(screenshot, finalCaption);
-        
+
         // Update caption if image was processed
         if (finalScreenshot.length !== screenshot.length) {
           finalCaption += '\n⚠️ Telegram için optimize edildi';
         }
-        
+
         // Delete loading message
         try {
           await this.bot!.deleteMessage(chatId, loadingMsg.message_id);
         } catch (deleteError) {
           // Ignore delete errors
         }
-        
+
         // Send screenshot
         await this.bot!.sendPhoto(chatId, finalScreenshot, {
           caption: finalCaption
@@ -155,14 +157,14 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
 
       } catch (error) {
         console.error('Screenshot error:', error);
-        
+
         // Delete loading message (ignore errors)
         try {
           await this.bot!.deleteMessage(chatId, loadingMsg.message_id);
         } catch (deleteError) {
           // Ignore delete errors
         }
-        
+
         // Send error message
         this.bot!.sendMessage(chatId, `❌ Screenshot alınamadı: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`);
       }
@@ -208,6 +210,16 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
         options.viewport = { width: 768, height: 1024 };
       } else if (flag === '--desktop') {
         options.viewport = { width: 1920, height: 1080 };
+      } else if (flag === '--lazy') {
+        options.lazyLoad = true;
+      } else if (flag === '--no-lazy') {
+        options.lazyLoad = false;
+      } else if (flag.startsWith('--delay=')) {
+        const delayStr = flag.split('=')[1];
+        if (delayStr) {
+          const delay = parseInt(delayStr);
+          options.delay = isNaN(delay) ? 1000 : Math.min(delay, 10000);
+        }
       } else if (flag.startsWith('--format=')) {
         const format = flag.split('=')[1];
         if (format === 'png' || format === 'jpeg') {
@@ -227,19 +239,19 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
     try {
       const image = sharp(imageBuffer);
       const metadata = await image.metadata();
-      
+
       if (!metadata.width || !metadata.height) {
         throw new Error('Could not read image dimensions');
       }
-      
+
       // Telegram limits: 10000x10000 pixels, ~10MB file size
       const maxDimension = 8000; // Be conservative
       const maxFileSize = 5 * 1024 * 1024; // 5MB
-      
+
       let needsResize = false;
       let newWidth = metadata.width;
       let newHeight = metadata.height;
-      
+
       // Check if dimensions exceed limits
       if (metadata.width > maxDimension || metadata.height > maxDimension) {
         needsResize = true;
@@ -248,32 +260,32 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
         newHeight = Math.round(metadata.height * ratio);
         logger.info(`Resizing image from ${metadata.width}x${metadata.height} to ${newWidth}x${newHeight}`);
       }
-      
+
       let processedImage = image;
-      
+
       if (needsResize) {
         processedImage = image.resize(newWidth, newHeight, {
           kernel: sharp.kernel.lanczos3,
           withoutEnlargement: true
         });
       }
-      
+
       // Convert to JPEG with quality optimization if file is too large
       let result = await processedImage.jpeg({ quality: 85, progressive: true }).toBuffer();
-      
+
       // If still too large, reduce quality further
       if (result.length > maxFileSize) {
         logger.info(`File still too large (${result.length} bytes), reducing quality`);
         result = await processedImage.jpeg({ quality: 60, progressive: true }).toBuffer();
-        
+
         // Last resort: reduce quality to minimum acceptable
         if (result.length > maxFileSize) {
           result = await processedImage.jpeg({ quality: 40, progressive: true }).toBuffer();
         }
       }
-      
+
       return result;
-      
+
     } catch (error) {
       logger.error('Error processing image for Telegram:', error);
       // Return original if processing fails
@@ -283,13 +295,13 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
 
   private getOptionsText(options: ScreenshotOptions): string {
     const parts: string[] = [];
-    
+
     if (options.fullPage) {
       parts.push('📄 Tüm sayfa');
     } else {
       parts.push('🖼️ Viewport');
     }
-    
+
     if (options.viewport) {
       const { width, height } = options.viewport;
       if (width === 375 && height === 667) {
@@ -302,9 +314,17 @@ Bu bot ile web sitelerinin ekran görüntüsünü alabilirsiniz.
         parts.push(`📐 ${width}x${height}`);
       }
     }
-    
+
     parts.push(`📋 ${options.format?.toUpperCase()}`);
-    
+
+    if (options.lazyLoad) {
+      parts.push('⏳ Lazy Load');
+    }
+
+    if (options.delay && options.delay > 1000) {
+      parts.push(`⏱️ ${options.delay}ms`);
+    }
+
     return parts.join(' • ');
   }
 

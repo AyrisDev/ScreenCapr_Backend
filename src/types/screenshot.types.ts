@@ -6,6 +6,8 @@ export interface ScreenshotOptions {
   format?: 'png' | 'jpeg';
   quality?: number;
   timeout?: number;
+  delay?: number;
+  lazyLoad?: boolean;
   viewport?: {
     width: number;
     height: number;

@@ -10,6 +10,8 @@ const screenshotOptionsSchema = Joi.object({
   format: Joi.string().valid('png', 'jpeg').optional(),
   quality: Joi.number().integer().min(1).max(100).optional(),
   timeout: Joi.number().integer().min(5000).max(60000).optional(),
+  delay: Joi.number().integer().min(0).max(10000).optional(),
+  lazyLoad: Joi.boolean().optional(),
 });
 
 const screenshotRequestSchema = Joi.object({
@@ -32,7 +34,7 @@ export const validateScreenshotRequest = (
   next: NextFunction
 ): void => {
   const { error, value } = screenshotRequestSchema.validate(req.body);
-  
+
   if (error) {
     logger.warn('Screenshot request validation failed:', error.details[0]?.message);
     res.status(400).json({
@@ -54,7 +56,7 @@ export const validateBatchScreenshotRequest = (
   next: NextFunction
 ): void => {
   const { error, value } = batchScreenshotRequestSchema.validate(req.body);
-  
+
   if (error) {
     logger.warn('Batch screenshot request validation failed:', error.details[0]?.message);
     res.status(400).json({
@@ -73,7 +75,7 @@ export const validateBatchScreenshotRequest = (
 export const validateQueryParams = (schema: Joi.ObjectSchema) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     const { error, value } = schema.validate(req.query);
-    
+
     if (error) {
       logger.warn('Query parameters validation failed:', error.details[0]?.message);
       res.status(400).json({

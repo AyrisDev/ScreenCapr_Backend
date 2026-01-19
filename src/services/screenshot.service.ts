@@ -14,6 +14,8 @@ export class ScreenshotService {
     format: 'png',
     quality: 80,
     timeout: 30000,
+    delay: 2000,
+    lazyLoad: true,
     viewport: { width: 1920, height: 1080 },
   };
 
@@ -25,25 +27,25 @@ export class ScreenshotService {
       // Handle both request types
       const url = 'url' in request ? request.url : (request.url || '');
       const options = 'options' in request ? request.options : { ...this.defaultOptions, ...request };
-      
+
       if (!url) {
         throw new Error('URL is required for screenshot');
       }
-      
+
       // Determine device type for emulation
       const viewportWidth = options.viewport?.width || options.width || 1920;
       const viewportHeight = options.viewport?.height || options.height || 1080;
-      
+
       let deviceName: string | undefined;
       if (viewportWidth === 375 && viewportHeight === 667) {
         deviceName = 'iPhone 13';
       } else if (viewportWidth === 768 && viewportHeight === 1024) {
         deviceName = 'iPad Pro';
       }
-      
+
       // Create page with appropriate device emulation
       page = await browserPool.createPage(browser, deviceName);
-      
+
       // If not using device emulation, set custom viewport
       if (!deviceName) {
         await page.setViewportSize({
@@ -53,7 +55,7 @@ export class ScreenshotService {
       }
 
       logger.info(`Taking screenshot of: ${url}`);
-      
+
       // Navigate to the page
       const response = await page.goto(url, {
         waitUntil: 'networkidle',
@@ -64,8 +66,18 @@ export class ScreenshotService {
         throw new Error(`Failed to load page: ${response?.status()} ${response?.statusText()}`);
       }
 
-      // Wait a bit for dynamic content
-      await page.waitForTimeout(1000);
+      // Handle Lazy Load (Scroll to bottom)
+      if (options.lazyLoad) {
+        logger.info(`Applying lazy load scroll for: ${url}`);
+        await this.autoScroll(page);
+      }
+
+      // Wait for specified delay
+      const waitTime = options.delay !== undefined ? options.delay : 1000;
+      if (waitTime > 0) {
+        logger.debug(`Waiting for ${waitTime}ms before screenshot`);
+        await page.waitForTimeout(waitTime);
+      }
 
       // Take screenshot
       const screenshotBuffer = await page.screenshot({
@@ -76,7 +88,7 @@ export class ScreenshotService {
 
       logger.info(`Screenshot taken successfully for: ${url}`);
       return screenshotBuffer as Buffer;
-      
+
     } catch (error) {
       const url = 'url' in request ? request.url : (request.url || 'unknown');
       logger.error(`Error taking screenshot for ${url}:`, error);
@@ -124,15 +136,15 @@ export class ScreenshotService {
 
           const buffer = await this.takeScreenshot(screenshotRequest);
           const filename = this.generateFilename(url, index, options.format);
-          
+
           archive.append(buffer, { name: filename });
           successCount++;
           logger.debug(`Added ${filename} to archive`);
-          
+
         } catch (error) {
           errorCount++;
           logger.error(`Failed to screenshot ${url}:`, error);
-          
+
           // Add error file to archive
           const errorFilename = this.generateFilename(url, index, 'txt');
           const errorContent = `Error taking screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -144,10 +156,10 @@ export class ScreenshotService {
     }
 
     logger.info(`Batch screenshots completed. Success: ${successCount}, Errors: ${errorCount}`);
-    
+
     // Finalize the archive
     archive.finalize();
-    
+
     return archive;
   }
 
@@ -165,7 +177,7 @@ export class ScreenshotService {
       .replace(/^https?:\/\//, '')
       .replace(/[^a-zA-Z0-9.-]/g, '_')
       .substring(0, 50);
-    
+
     const timestamp = Date.now();
     return `screenshot_${index + 1}_${cleanUrl}_${timestamp}.${format}`;
   }
@@ -184,6 +196,30 @@ export class ScreenshotService {
       ...this.defaultOptions,
       ...options,
     };
+  }
+
+  private async autoScroll(page: Page): Promise<void> {
+    await page.evaluate(async () => {
+      await new Promise<void>((resolve) => {
+        let totalHeight = 0;
+        const distance = 400; // Scroll distance each step
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          window.scrollBy(0, distance);
+          totalHeight += distance;
+
+          if (totalHeight >= scrollHeight || totalHeight > 10000) { // Safety limit at 10k pixels
+            clearInterval(timer);
+            resolve();
+          }
+        }, 100); // 100ms interval
+      });
+    });
+
+    // Scroll back to top after reaching bottom to ensure full page shots start from top
+    await page.evaluate(() => window.scrollTo(0, 0));
+    // Brief wait after scrolling back
+    await page.waitForTimeout(500);
   }
 }
 
