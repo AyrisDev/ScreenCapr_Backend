@@ -12,6 +12,10 @@ const screenshotOptionsSchema = Joi.object({
   timeout: Joi.number().integer().min(5000).max(60000).optional(),
   delay: Joi.number().integer().min(0).max(10000).optional(),
   lazyLoad: Joi.boolean().optional(),
+  viewport: Joi.object({
+    width: Joi.number().integer().min(100).max(3840).required(),
+    height: Joi.number().integer().min(100).max(2160).required(),
+  }).optional(),
 });
 
 const screenshotRequestSchema = Joi.object({

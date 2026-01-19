@@ -32,15 +32,24 @@ export class ScreenshotService {
         throw new Error('URL is required for screenshot');
       }
 
-      // Determine device type for emulation
+      // Determine viewport dimensions
+      // Priority: explicit viewport object > width/height properties
       const viewportWidth = options.viewport?.width || options.width || 1920;
       const viewportHeight = options.viewport?.height || options.height || 1080;
 
+      logger.info(`Viewport dimensions: ${viewportWidth}x${viewportHeight}`);
+
+      // Determine device type for emulation based on viewport dimensions
       let deviceName: string | undefined;
       if (viewportWidth === 375 && viewportHeight === 667) {
         deviceName = 'iPhone 13';
+        logger.info('Using iPhone 13 device emulation');
+      } else if (viewportWidth === 414 && viewportHeight === 896) {
+        deviceName = 'iPhone 13 Pro Max';
+        logger.info('Using iPhone 13 Pro Max device emulation');
       } else if (viewportWidth === 768 && viewportHeight === 1024) {
         deviceName = 'iPad Pro';
+        logger.info('Using iPad Pro device emulation');
       }
 
       // Create page with appropriate device emulation
@@ -48,6 +57,7 @@ export class ScreenshotService {
 
       // If not using device emulation, set custom viewport
       if (!deviceName) {
+        logger.info(`Setting custom viewport: ${viewportWidth}x${viewportHeight}`);
         await page.setViewportSize({
           width: viewportWidth,
           height: viewportHeight,
@@ -192,10 +202,20 @@ export class ScreenshotService {
   }
 
   mergeWithDefaults(options?: ScreenshotOptions): Required<ScreenshotOptions> {
-    return {
+    const merged = {
       ...this.defaultOptions,
       ...options,
     };
+
+    // If viewport is not explicitly provided but width/height are, sync viewport with width/height
+    if (options && (options.width || options.height) && !options.viewport) {
+      merged.viewport = {
+        width: options.width || this.defaultOptions.width,
+        height: options.height || this.defaultOptions.height,
+      };
+    }
+
+    return merged;
   }
 
   private async autoScroll(page: Page): Promise<void> {

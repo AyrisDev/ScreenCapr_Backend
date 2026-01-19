@@ -34,7 +34,9 @@ const getConfig = (): Config => {
       maxConcurrent: parseInt(process.env.MAX_CONCURRENT_SCREENSHOTS || '5', 10),
     },
     cors: {
-      origin: process.env.CORS_ORIGIN === '*' ? true : process.env.CORS_ORIGIN?.split(',') || false,
+      origin: (process.env.NODE_ENV || 'development') === 'development'
+        ? true  // Allow all origins in development
+        : (process.env.CORS_ORIGIN === '*' ? true : process.env.CORS_ORIGIN?.split(',') || false),
       credentials: process.env.CORS_CREDENTIALS === 'true',
     },
   };
